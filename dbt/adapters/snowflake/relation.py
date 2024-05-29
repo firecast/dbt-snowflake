@@ -11,6 +11,11 @@ from dbt.adapters.snowflake.relation_configs import (
     SnowflakeDynamicTableConfigChangeset,
     SnowflakeDynamicTableTargetLagConfigChange,
     SnowflakeDynamicTableWarehouseConfigChange,
+    SnowflakeIcebergTableConfig,
+    SnowflakeIcebergTableConfigChangeset,
+    SnowflakeIcebergTableBaseLocationConfigChange,
+    SnowflakeIcebergTableCatalogConfigChange,
+    SnowflakeIcebergTableExternalVolumeConfigChange,
     SnowflakeQuotePolicy,
     SnowflakeRelationType,
 )
@@ -34,6 +39,7 @@ class SnowflakeRelation(BaseRelation):
         default_factory=lambda: frozenset(
             {
                 SnowflakeRelationType.DynamicTable,  # type: ignore
+                SnowflakeRelationType.IcebergTable,  # type: ignore
                 SnowflakeRelationType.Table,  # type: ignore
                 SnowflakeRelationType.View,  # type: ignore
             }
@@ -44,9 +50,17 @@ class SnowflakeRelation(BaseRelation):
     def is_dynamic_table(self) -> bool:
         return self.type == SnowflakeRelationType.DynamicTable
 
+    @property
+    def is_iceberg_table(self) -> bool:
+        return self.type == SnowflakeRelationType.IcebergTable
+
     @classproperty
     def DynamicTable(cls) -> str:
         return str(SnowflakeRelationType.DynamicTable)
+
+    @classproperty
+    def IcebergTable(cls) -> str:
+        return str(SnowflakeRelationType.IcebergTable)
 
     @classproperty
     def get_relation_type(cls) -> Type[SnowflakeRelationType]:
@@ -79,4 +93,40 @@ class SnowflakeRelation(BaseRelation):
 
         if config_change_collection.has_changes:
             return config_change_collection
+        return None
+
+    @classmethod
+    def iceberg_table_config_changeset(
+        cls, relation_results: RelationResults, relation_config: RelationConfig
+    ) -> Optional[SnowflakeIcebergTableConfigChangeset]:
+        existing_iceberg_table = SnowflakeIcebergTableConfig.from_relation_results(
+            relation_results
+        )
+        new_iceberg_table = SnowflakeIcebergTableConfig.from_relation_config(relation_config)
+
+        config_change_collection = SnowflakeIcebergTableConfigChangeset()
+
+        if new_iceberg_table.external_volume != existing_iceberg_table.external_volume:
+            config_change_collection.external_volume = (
+                SnowflakeIcebergTableExternalVolumeConfigChange(
+                    action=RelationConfigChangeAction.alter,
+                    context=new_iceberg_table.external_volume,
+                )
+            )
+
+        if new_iceberg_table.catalog != existing_iceberg_table.catalog:
+            config_change_collection.catalog = SnowflakeIcebergTableCatalogConfigChange(
+                action=RelationConfigChangeAction.alter,
+                context=new_iceberg_table.catalog,
+            )
+
+        if new_iceberg_table.base_location != existing_iceberg_table.base_location:
+            config_change_collection.base_location = SnowflakeIcebergTableBaseLocationConfigChange(
+                action=RelationConfigChangeAction.alter,
+                context=new_iceberg_table.base_location,
+            )
+
+        if config_change_collection.has_changes:
+            return config_change_collection
+
         return None

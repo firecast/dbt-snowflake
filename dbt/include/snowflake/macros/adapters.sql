@@ -121,33 +121,18 @@
 
 {% macro snowflake__list_relations_without_caching(schema_relation, max_iter=10, max_results_per_iter=10000) %}
 
-  {%- set max_total_results = max_results_per_iter * max_iter -%}
-
   {%- set sql -%}
-    show objects in {{ schema_relation.database }}.{{ schema_relation.schema }} limit {{ max_results_per_iter }}
+    select
+        CASE TABLE_TYPE WHEN 'BASE TABLE' THEN 'table'
+                        ELSE TABLE_TYPE END as kind,
+        *
+    from
+        {{ schema_relation.database }}.INFORMATION_SCHEMA.TABLES
+    WHERE TABLE_SCHEMA = '{{ schema_relation.schema }}'
   {%- endset -%}
 
   {%- set result = run_query(sql) -%}
 
-  {%- set n = (result | length) -%}
-  {%- set watermark = namespace(table_name=result.columns[1].values()[-1]) -%}
-  {%- set paginated = namespace(result=[]) -%}
-
-  {% if n >= max_results_per_iter %}
-
-    {% set paginated.result = snowflake__get_paginated_relations_array(
-         max_iter,
-         max_results_per_iter,
-         max_total_results,
-         schema_relation,
-         watermark
-       )
-    %}
-
-  {% endif %}
-
-  {%- set all_results_array = [result] + paginated.result -%}
-  {%- set result = result.merge(all_results_array) -%}
   {%- do return(result) -%}
 
 {% endmacro %}
@@ -173,6 +158,8 @@
 {% macro snowflake__alter_relation_comment(relation, relation_comment) -%}
     {%- if relation.is_dynamic_table -%}
         {%- set relation_type = 'dynamic table' -%}
+    {%- elif relation.is_iceberg_table -%}
+        {%- set relation_type = 'iceberg table' -%}
     {%- else -%}
         {%- set relation_type = relation.type -%}
     {%- endif -%}
@@ -184,6 +171,8 @@
     {% set existing_columns = adapter.get_columns_in_relation(relation) | map(attribute="name") | list %}
     {% if relation.is_dynamic_table -%}
         {% set relation_type = "table" %}
+    {% elif relation.is_iceberg_table -%}
+        {% set relation_type = "iceberg table" %}
     {% else -%}
         {% set relation_type = relation.type %}
     {% endif %}
@@ -239,6 +228,8 @@
 
     {% if relation.is_dynamic_table -%}
         {% set relation_type = "dynamic table" %}
+    {% elif relation.is_iceberg_table -%}
+        {% set relation_type = "iceberg table" %}
     {% else -%}
         {% set relation_type = relation.type %}
     {% endif %}

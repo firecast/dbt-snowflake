@@ -134,7 +134,7 @@ class SnowflakeAdapter(SQLAdapter):
     ) -> List[SnowflakeRelation]:
         kwargs = {"schema_relation": schema_relation}
         try:
-            results = self.execute_macro(LIST_RELATIONS_MACRO_NAME, kwargs=kwargs)
+            results: agate.Table = self.execute_macro(LIST_RELATIONS_MACRO_NAME, kwargs=kwargs)
         except DbtDatabaseError as exc:
             # if the schema doesn't exist, we just want to return.
             # Alternatively, we could query the list of schemas before we start
@@ -144,27 +144,33 @@ class SnowflakeAdapter(SQLAdapter):
             raise
 
         # this can be reduced to always including `is_dynamic` once bundle `2024_03` is mandatory
-        columns = ["database_name", "schema_name", "name", "kind"]
-        if "is_dynamic" in results.column_names:
-            columns.append("is_dynamic")
+        columns = ["TABLE_CATALOG", "TABLE_SCHEMA", "TABLE_NAME", "KIND"]
+        if "IS_DYNAMIC" in results.column_names:
+            columns.append("IS_DYNAMIC")
+        if "IS_ICEBERG" in results.column_names:
+            columns.append("IS_ICEBERG")
 
         return [self._parse_list_relations_result(result) for result in results.select(columns)]
 
     def _parse_list_relations_result(self, result: agate.Row) -> SnowflakeRelation:
         # this can be reduced to always including `is_dynamic` once bundle `2024_03` is mandatory
         try:
-            database, schema, identifier, relation_type, is_dynamic = result
+            database, schema, identifier, relation_type, is_dynamic, is_iceberg = result
         except ValueError:
             database, schema, identifier, relation_type = result
-            is_dynamic = "N"
+            is_dynamic = "NO"
+            is_iceberg = "NO"
 
         try:
             relation_type = self.Relation.get_relation_type(relation_type.lower())
         except ValueError:
             relation_type = self.Relation.External
 
-        if relation_type == self.Relation.Table and is_dynamic == "Y":
+        if relation_type == self.Relation.Table and is_dynamic == "YES":
             relation_type = self.Relation.DynamicTable
+
+        if relation_type == self.Relation.Table and is_iceberg == "YES":
+            relation_type = self.Relation.IcebergTable
 
         quote_policy = {"database": True, "schema": True, "identifier": True}
         return self.Relation.create(

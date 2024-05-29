@@ -12,7 +12,7 @@
 
        Low-level specifics:
        If an invalid option is specified, then we will raise an
-       excpetion with corresponding message.
+       exception with corresponding message.
 
        Languages other than SQL (like Python) will use a temporary table.
        With the default strategy of merge, the user may choose between a temporary
